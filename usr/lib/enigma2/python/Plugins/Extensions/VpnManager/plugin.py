@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import map
+
 from Components.ActionMap import ActionMap, NumberActionMap
 from Plugins.Plugin import PluginDescriptor
 from Components.Label import Label
@@ -29,12 +34,16 @@ import re
 import glob
 import ast
 
-from myScrollBar import my_scroll_bar
-from infoHelper import infoHelper
-from ipinfo import get_ip_info
+from .myScrollBar import my_scroll_bar
+from .infoHelper import infoHelper
+from .ipinfo import get_ip_info
+from .readFreeVpnBook import VpnBook
+from .readFreeVpnMe import VpnMe
 
 
-PLUGINVERSION = "1.1.4"
+PLUGINVERSION = "1.1.7"
+INFO = "Package: enigma2-plugin-extensions-vpnmanager\nVersion: " + PLUGINVERSION + "\nDescription: Manage your VPN connections\nMaintainer: murxer <support@boxpirates.to>"
+
 
 damnPanels = ["GoldenPanel", "SatVenusPanel", "GoldenFeed", "PersianDreambox", "DreamOSatDownloader"]
 for damnPanel in damnPanels:
@@ -65,6 +74,9 @@ config.vpnmanager.vpnresolv = ConfigYesNo(default=False)
 config.vpnmanager.vpndns1 = ConfigIP(default=[0, 0, 0, 0], auto_jump=True)
 config.vpnmanager.vpndns2 = ConfigIP(default=[0, 0, 0, 0], auto_jump=True)
 
+config.vpnmanager.free_mode = ConfigYesNo(default=False)
+config.vpnmanager.free_mode_type = ConfigSelection(choices=[("book", "VpnBook")], default="book") #("me", "VpnMe") not more working
+
 # Desktop
 DESKTOPSIZE = getDesktop(0).size()
 if DESKTOPSIZE.width() > 1280:
@@ -78,9 +90,10 @@ else:
 class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
     def __init__(self, session):
         try:
-            addFont("/usr/share/fonts/LiberationSans-Regular.ttf", "Vpn", 100, False)
-        except Exception, ex:
-            addFont("/usr/share/fonts/LiberationSans-Regular.ttf", "Vpn", 100, False, 0)
+            addFont("/usr/lib/enigma2/python/Plugins/Extensions/VpnManager/font/OpenSans-Regular.ttf", "Vpn", 100, False)
+        except Exception as ex:
+            addFont("/usr/lib/enigma2/python/Plugins/Extensions/VpnManager/font/OpenSans-Regular.ttf", "Vpn", 100, False,
+                    0)
         if DESKTOPSIZE.width() == 1920:
             self.skin = """
                                     <screen name="VpnManagerScreen" backgroundColor="#00ffffff" position="center,center" size="1920,1080" title="VpnManagerScreen" flags="wfNoBorder">
@@ -158,6 +171,7 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
             "green": self.keyGreen,
             "menu": self.keyMenu,
             "cancel": self.keyCancel,
+            "info": self.keyInfo,
             "0": self.keyExit
         }, -1)
 
@@ -187,6 +201,10 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
         self.StatusSpinnerTimer = 0
         self.StatusTimerSpinner.callback.append(self.loadSpinner)
 
+        # Free mode
+        self.freeVpnBook = VpnBook()
+        self.freeVpnMe = VpnMe()
+
         self.listVpn = []
         self.onLayoutFinish.append(self.saveDefaultResolv)
         self.onLayoutFinish.append(self.setList)
@@ -194,31 +212,38 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
     def setList(self, reload=None):
         self.listVpn = []
         self.is_vpn = statusTun()
-        if os.path.exists(config.vpnmanager.directory.value):
-            if not config.vpnmanager.one_folder.value:
-                for directory in os.listdir(config.vpnmanager.directory.value):
-                    if os.path.isdir(config.vpnmanager.directory.value + "/" + directory):
-                        if config.vpnmanager.active.value == directory:
-                            is_connect = True
-                            png = 1 if self.is_vpn else 2
-                        else:
-                            is_connect = False
-                            png = 3
-                        self.listVpn.append(
-                            (directory, config.vpnmanager.directory.value + "/" + directory, is_connect, png))
+
+        if config.vpnmanager.free_mode.value:
+            if config.vpnmanager.free_mode_type.value == "book":
+                self.listVpn = self.freeVpnBook.get_config_data(self.is_vpn)
             else:
-                for conf in os.listdir(config.vpnmanager.directory.value):
-                    if os.path.isfile(config.vpnmanager.directory.value + "/" + conf):
-                        if conf.endswith("conf") or conf.endswith("ovpn"):
-                            if config.vpnmanager.active.value == conf.replace(".conf", "").replace(".ovpn", ""):
+                self.listVpn = self.freeVpnMe.get_config_data(self.is_vpn)
+        else:
+            if os.path.exists(config.vpnmanager.directory.value):
+                if not config.vpnmanager.one_folder.value:
+                    for directory in os.listdir(config.vpnmanager.directory.value):
+                        if os.path.isdir(config.vpnmanager.directory.value + "/" + directory):
+                            if config.vpnmanager.active.value == directory:
                                 is_connect = True
                                 png = 1 if self.is_vpn else 2
                             else:
                                 is_connect = False
                                 png = 3
                             self.listVpn.append(
-                                (conf.replace(".conf", "").replace(".ovpn", ""),
-                                 config.vpnmanager.directory.value + "/" + conf, is_connect, png))
+                                (directory, config.vpnmanager.directory.value + "/" + directory, is_connect, png))
+                else:
+                    for conf in os.listdir(config.vpnmanager.directory.value):
+                        if os.path.isfile(config.vpnmanager.directory.value + "/" + conf):
+                            if conf.endswith("conf") or conf.endswith("ovpn"):
+                                if config.vpnmanager.active.value == conf.replace(".conf", "").replace(".ovpn", ""):
+                                    is_connect = True
+                                    png = 1 if self.is_vpn else 2
+                                else:
+                                    is_connect = False
+                                    png = 3
+                                self.listVpn.append(
+                                    (conf.replace(".conf", "").replace(".ovpn", ""),
+                                     config.vpnmanager.directory.value + "/" + conf, is_connect, png))
 
         if self.listVpn:
             self.listVpn.sort()
@@ -229,7 +254,7 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
                     s = x
                     break
                 x = x + 1
-            self.chooseMenuList.setList(map(enterListEntry, self.listVpn, ))
+            self.chooseMenuList.setList(list(map(enterListEntry, self.listVpn, )))
             self.chooseMenuList.moveToIndex(s)
             self.loadScrollbar(index=s, max_items=len(self.listVpn))
         self.readIP()
@@ -302,6 +327,9 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
                         elif re.search("script-security", line):
                             security = True
                             new_conf_write.write(line)
+                        elif line[:3] == "dev":
+                            new_line = "dev tun\n"
+                            new_conf_write.write(new_line)
                         else:
                             new_conf_write.write(line)
                     if not security:
@@ -339,7 +367,7 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
                     try:
                         shutil.copyfile(RESOLVCONF, "/etc/openvpn/update-resolv-conf")
                     except shutil.Error as e:
-                        print e
+                        print(e)
                     os.system("chmod 755 /etc/openvpn/update-resolv-conf")
                 os.system("chmod 600 /etc/openvpn/*.conf")
                 os.system("chmod 600 /etc/openvpn/pass.file")
@@ -446,7 +474,7 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
     def setNewDNS(self):
         nameservers = iNetwork.getNameserverList()
         nameserver = []
-        for i in xrange(len(nameservers)):
+        for i in range(len(nameservers)):
             iNetwork.removeNameserver(nameservers[0])
 
         resolv_file = "/etc/resolv.conf"
@@ -468,7 +496,7 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
     def setDefaultDns(self):
         nameservers = iNetwork.getNameserverList()
         nameserver = []
-        for i in xrange(len(nameservers)):
+        for i in range(len(nameservers)):
             iNetwork.removeNameserver(nameservers[0])
 
         nameserverEntries = [NoSave(ConfigIP(default=nameserver)) for nameserver in nameservers]
@@ -602,6 +630,9 @@ class VpnManagerScreen(Screen, my_scroll_bar, infoHelper):
         if not self.StatusSpinner:
             self.close(self.session, True)
 
+    def keyInfo(self):
+        self.session.open(MessageBox, windowTitle="VPN-Manager Info", text=INFO, type=MessageBox.TYPE_INFO)
+
 
 class VpnManagerConfigScreen(Screen, ConfigListScreen):
     def __init__(self, session):
@@ -610,6 +641,7 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
                         <screen name="VpnManger" backgroundColor="#00ffffff" position="center,center" size="1920,1080" title="VpnManager" flags="wfNoBorder">
                         <eLabel name="BackgroundColor" position="2,2" size="1916,1076" zPosition="1" backgroundColor="#002a2a2a" />
                         <ePixmap name="logo" position="77,2" size="1018,297" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/VpnManager/image/openvpn_logo_1920.png" alphatest="blend" zPosition="2" />          
+                        <widget name="PwLogo" position="1337,550" size="400,52" alphatest="blend" zPosition="4" />
                         <eLabel name="line1" position="28,299" size="1116,760" zPosition="1" backgroundColor="#00ffffff" />
                         <eLabel name="line2" position="1122,301" size="20,756" zPosition="2" backgroundColor="#002a2a2a" />
                         <widget name="config" position="30,301" size="1090,756" backgroundColorSelected="#002f4665" foregroundColorSelected="#00ffffff" foregroundColor="#00ffffff" backgroundColor="#002a2a2a" zPosition="3" transparent="0" />
@@ -619,6 +651,8 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
                         <eLabel name="line7" position="1188,1057" size="700,2" zPosition="2" backgroundColor="#00ffffff" />
                         <eLabel name="line8" position="1188,38" size="2,1019" zPosition="2" backgroundColor="#00ffffff" />
                         <eLabel name="line10" position="1190,1022" size="200,2" zPosition="4" backgroundColor="#00ff0000" />
+                        <widget name="myInfoLabel" position="1190,40" size="694,872" transparent="0" foregroundColor="#00ffffff" backgroundColor="#002a2a2a" zPosition="3" font="Vpn; 28" valign="center" halign="center"/>
+                        
                         <eLabel text="Set Default DNS" position="1190,1024" size="200,33" backgroundColor="#002a2a2a" transparent="0" foregroundColor="#00ffffff" zPosition="3" font="Vpn; 24" valign="top" halign="center" />
                         <eLabel name="line10" position="1190,1057" size="200,2" zPosition="4" backgroundColor="#00ff0000" />
                         <eLabel name="line9" position="1888,38" size="2,1019" zPosition="2" backgroundColor="#00ffffff" />
@@ -635,6 +669,7 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
                         <screen name="VpnManager" backgroundColor="#00ffffff" position="center,center" size="1280,720" title="VpnManager" flags="wfNoBorder">
                         <eLabel name="BackgroundColor" position="1,1" size="1277,717" zPosition="1" backgroundColor="#002a2a2a" />
                         <ePixmap name="logo" position="51,1" size="678,198" pixmap="/usr/lib/enigma2/python/Plugins/Extensions/VpnManager/image/openvpn_logo_1280.png" alphatest="blend" zPosition="2" />
+                        <widget name="PwLogo" position="891,366" size="266,34" alphatest="blend" zPosition="4" />
                         <eLabel name="line1" position="18,199" size="744,506" zPosition="1" backgroundColor="#00ffffff" />
                         <eLabel name="line2" position="748,200" size="13,504" zPosition="2" backgroundColor="#002a2a2a" />
                         <widget name="config" position="20,200" size="726,504" backgroundColorSelected="#002f4665" foregroundColorSelected="#00ffffff" foregroundColor="#00ffffff" backgroundColor="#002a2a2a" zPosition="3" transparent="0"/>
@@ -646,6 +681,8 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
                         <eLabel name="line9" position="1258,25" size="1,679" zPosition="2" backgroundColor="#00ffffff" />
                         <eLabel name="line10" position="926,681" size="1,24" zPosition="2" backgroundColor="#00ffffff" />
                         <eLabel name="line10" position="793,681" size="133,1" zPosition="4" backgroundColor="#00ff0000" />
+                        <widget name="myInfoLabel" position="793,26" size="462,581" transparent="0" foregroundColor="#00ffffff" backgroundColor="#002a2a2a" zPosition="3" font="Vpn; 18" valign="center" halign="center"/>
+                        
                         <eLabel text="Set Default DNS" position="793,682" size="133,22" backgroundColor="#002a2a2a" transparent="0" foregroundColor="#00ffffff" zPosition="3" font="Vpn; 16" valign="top" halign="center" />
                         <eLabel name="line10" position="793,704" size="133,1" zPosition="4" backgroundColor="#00ff0000" /><eLabel name="line11" position="1061,681" size="1,24" zPosition="2" backgroundColor="#00ffffff" />
                         <eLabel name="line12" position="1129,681" size="1,24" zPosition="2" backgroundColor="#00ffffff" />
@@ -663,6 +700,8 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
             "red": self.keyRed,
             "left": self.keyLeft,
             "right": self.keyRight,
+            "up": self.keyUp,
+            "down": self.keyDown,
             "cancel": self.keyCancel
         }, -1)
 
@@ -679,9 +718,18 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
             "0": self.keyNumberGlobal
         }, -1)
 
+        self["PwLogo"] = Pixmap()
+        self["PwLogo"].hide()
+        self["myInfoLabel"] = Label("")
+
+        # Free mode
+        self.freeVpnBook = VpnBook()
+        self.freeVpnMe = VpnMe()
+        self.freeModeProvider = config.vpnmanager.free_mode_type.value
+
         self.list = []
         self.createConfigList()
-        ConfigListScreen.__init__(self, self.list)
+        ConfigListScreen.__init__(self, self.list, on_change=self.setInfoTxt)
 
         for file_destination in VPNAUTHFILES:
             if os.path.isfile(file_destination):
@@ -699,8 +747,14 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
 
     def createConfigList(self):
         self.list = []
-        self.list.append(getConfigListEntry("All config in one folder:", config.vpnmanager.one_folder))
-        self.list.append(getConfigListEntry("Save directory config:", config.vpnmanager.directory))
+
+        self.list.append(getConfigListEntry(_("VPN free mode:"), config.vpnmanager.free_mode))
+        if not config.vpnmanager.free_mode.value:
+            self.list.append(getConfigListEntry(_("All config's in one folder:"), config.vpnmanager.one_folder))
+            self.list.append(getConfigListEntry(_("Storage location for config files:"), config.vpnmanager.directory))
+        else:
+            self.list.append(getConfigListEntry(_("Provider:"), config.vpnmanager.free_mode_type))
+
         self.list.append(getConfigListEntry("Default DNS 1:", config.vpnmanager.dns))
         self.list.append(getConfigListEntry("OpenVpn autostart:", config.vpnmanager.autostart))
         self.list.append(getConfigListEntry("OpenVpn resolv:", config.vpnmanager.resolv))
@@ -714,9 +768,12 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
 
     def keyNumberGlobal(self, number):
         if self['config'].getCurrent()[1] == config.vpnmanager.username or self['config'].getCurrent()[1] == config.vpnmanager.password:
-            title = self['config'].getCurrent()[0]
-            text = self['config'].getCurrent()[1].value
-            self.session.openWithCallback(self.set_config_value, VirtualKeyBoard, title=title, text=text)
+            if config.vpnmanager.free_mode.value:
+                ConfigListScreen.keyNumberGlobal(self, number)
+            else:
+                title = self['config'].getCurrent()[0]
+                text = self['config'].getCurrent()[1].value
+                self.session.openWithCallback(self.set_config_value, VirtualKeyBoard, title=title, text=text)
         elif self['config'].getCurrent()[1] == config.vpnmanager.directory:
             self.session.openWithCallback(self.createConfigList, FolderScreen, config.vpnmanager.directory.value)
         else:
@@ -729,6 +786,15 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
             config_value.save()
             configfile.save()
             self.changedEntry()
+
+    def keyUp(self):
+        self["config"].instance.moveSelection(self["config"].instance.moveUp)
+        self.setInfoTxt()
+
+    def keyDown(self):
+        if self["config"].getCurrentIndex() < len(self["config"].getList()) - 1:
+            self["config"].instance.moveSelection(self["config"].instance.moveDown)
+        self.setInfoTxt()
 
     def changedEntry(self):
         self.createConfigList()
@@ -746,18 +812,94 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
         if self['config'].getCurrent()[1] == config.vpnmanager.directory:
             self.session.openWithCallback(self.createConfigList, FolderScreen, config.vpnmanager.directory.value)
         else:
-            config.vpnmanager.one_folder.save()
-            config.vpnmanager.username.save()
-            config.vpnmanager.password.save()
-            config.vpnmanager.resolv.save()
-            config.vpnmanager.autostart.save()
-            config.vpnmanager.vpnresolv.save()
-            config.vpnmanager.vpndns1.save()
-            config.vpnmanager.vpndns2.save()
-            config.vpnmanager.dns.save()
-            configfile.save()
-            set_auto_start()
-            self.close()
+            if config.vpnmanager.free_mode.value:
+                if config.vpnmanager.free_mode_type.value == "book":
+                    if not self.freeVpnBook.update:
+                        self.session.openWithCallback(self.loadNewConfig, MessageBox, _("No new configs have been loaded yet!\nDownload configs?"), MessageBox.TYPE_YESNO, default=True)
+                        return
+                else:
+                    if not self.freeVpnMe.update:
+                        self.session.openWithCallback(self.loadNewConfig, MessageBox, _("No new configs have been loaded yet!\nDownload configs?"), MessageBox.TYPE_YESNO, default=True)
+                        return
+            self.saveExit()
+
+    def setInfoTxt(self):
+        txt = ""
+        show = False
+        if self['config'].getCurrent()[1] == config.vpnmanager.one_folder:
+            txt = _("If all configs are in one folder, please activate this function.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.directory:
+            txt = _("Here you can specify the storage location for the configs.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.dns:
+            txt = _("Here you can change the standard DNS.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.autostart:
+            txt = _("Here you can activate the autostart.\nThus, a VPN connection is started automatically after booting.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.resolv:
+            txt = _("If you disable resolvconf, the standard DNS servers are used. This creates a security hole.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.vpnresolv:
+            txt = _("Please only activate if you do not want to use the DNS server of the VPN provider.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.free_mode:
+            txt = _("This allows you to use free VPN connections.")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.free_mode_type:
+            txt = _("Here you can choose between different providers.\n\nhttps://www.vpnbook.com/freevpn\nhttps://www.freeopenvpn.me/")
+        elif self['config'].getCurrent()[1] == config.vpnmanager.username or self['config'].getCurrent()[1] == config.vpnmanager.password:
+            if config.vpnmanager.free_mode.value and self['config'].getCurrent()[1] == config.vpnmanager.username:
+                txt = _("Username is set automatically.")
+            elif config.vpnmanager.free_mode.value and self['config'].getCurrent()[1] == config.vpnmanager.password:
+                txt = _("Please enter the password from the picture.")
+                show = True
+            else:
+                txt = _("1 variant:\nEnter login data\n\n2 variant:\ncreates a text file in /media/hdd or/media/usb, this must be openvpnauth. This openvpnauth file should only consist of 2 lines, these are\nusername\npassword\nIf you now open the settings again, these access data will also be used.\n\n3 variant:\nAdd a file to the configs with the name pass.file. The content of the file consists of 2 lines, like the openvpnauth.")
+        if show:
+            self.showPwPng()
+        else:
+            self["PwLogo"].hide()
+        self["myInfoLabel"].setText(txt)
+
+    def showPwPng(self):
+        png = self.freeVpnBook.PW_PNG
+        if os.path.isfile(png):
+            self["PwLogo"].instance.setPixmapFromFile(png)
+            self["PwLogo"].show()
+        else:
+            txt = _("Sorry the password image was not found!")
+            self["myInfoLabel"].setText(txt)
+
+    def loadNewConfig(self, answer):
+        if answer:
+            if config.vpnmanager.free_mode_type.value == "book":
+                self.freeVpnBook.get_free_vpn()
+                self.freeModeProvider = "book"
+            else:
+                self.freeModeProvider = "me"
+                self.freeVpnMe.get_free_vpn()
+            self.changedEntry()
+        else:
+            self.saveExit()
+
+    def saveExit(self):
+        if not self.freeModeProvider == config.vpnmanager.free_mode_type.value:
+            os.system("rm -R %s" % self.freeVpnBook.CONF_DIRECTORY)
+            os.system("mkdir %s" % self.freeVpnBook.CONF_DIRECTORY)
+        if config.vpnmanager.free_mode.value:
+            config.vpnmanager.directory.value = self.freeVpnBook.CONF_DIRECTORY
+            config.vpnmanager.directory.save()
+            config.vpnmanager.one_folder.value = True
+
+        config.vpnmanager.free_mode.save()
+        config.vpnmanager.free_mode_type.save()
+        config.vpnmanager.one_folder.save()
+        config.vpnmanager.username.save()
+        config.vpnmanager.password.save()
+        config.vpnmanager.resolv.save()
+        config.vpnmanager.autostart.save()
+        config.vpnmanager.vpnresolv.save()
+        config.vpnmanager.vpndns1.save()
+        config.vpnmanager.vpndns2.save()
+        config.vpnmanager.dns.save()
+        configfile.save()
+        set_auto_start()
+        self.close()
 
     def keyRed(self):
         default_dns1 = '%d.%d.%d.%d' % tuple(config.vpnmanager.dns.value)
@@ -790,18 +932,16 @@ class VpnManagerConfigScreen(Screen, ConfigListScreen):
                 self.session.open(MessageBox, "Default DNS enabled", MessageBox.TYPE_INFO, timeout=10)
 
     def keyCancel(self):
-        config.vpnmanager.one_folder.save()
-        config.vpnmanager.username.save()
-        config.vpnmanager.password.save()
-        config.vpnmanager.resolv.save()
-        config.vpnmanager.autostart.save()
-        config.vpnmanager.vpnresolv.save()
-        config.vpnmanager.vpndns1.save()
-        config.vpnmanager.vpndns2.save()
-        config.vpnmanager.dns.save()
-        configfile.save()
-        set_auto_start()
-        self.close()
+        if config.vpnmanager.free_mode.value:
+            if config.vpnmanager.free_mode_type.value == "book":
+                if not self.freeVpnBook.update:
+                    self.session.openWithCallback(self.loadNewConfig, MessageBox, _("No new configs have been loaded yet!\nDownload configs?"), MessageBox.TYPE_YESNO, default=True)
+                    return
+            else:
+                if not self.freeVpnMe.update:
+                    self.session.openWithCallback(self.loadNewConfig, MessageBox, _("No new configs have been loaded yet!\nDownload configs?"), MessageBox.TYPE_YESNO, default=True)
+                    return
+        self.saveExit()
 
 
 class FolderScreen(Screen):
@@ -1003,12 +1143,12 @@ def main(session, **kwargs):
 
 def Plugins(**kwargs):
     if DESKTOPSIZE.width() > 1280:
-        return [PluginDescriptor(name=_("Vpn Manager"), description="Vpn Manager",
+        return [PluginDescriptor(name=_("Vpn Manager"), description="Manage your VPN connections",
                                  where=PluginDescriptor.WHERE_PLUGINMENU, icon="pluginfhd.png", fnc=main),
-                PluginDescriptor(name=_("Vpn Manager"), description="Vpn Manager",
+                PluginDescriptor(name=_("Vpn Manager"), description="Manage your VPN connections",
                                  where=PluginDescriptor.WHERE_EXTENSIONSMENU, fnc=main)]
     else:
-        return [PluginDescriptor(name=_("Vpn Manager"), description="Vpn Manager",
+        return [PluginDescriptor(name=_("Vpn Manager"), description="Manage your VPN connections",
                                  where=PluginDescriptor.WHERE_PLUGINMENU, icon="plugin.png", fnc=main),
-                PluginDescriptor(name=_("Vpn Manager"), description="Vpn Manager",
+                PluginDescriptor(name=_("Vpn Manager"), description="Manage your VPN connections",
                                  where=PluginDescriptor.WHERE_EXTENSIONSMENU, fnc=main)]

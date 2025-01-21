@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import map
+
 from Components.MenuList import MenuList
 from Components.config import config
 from enigma import gFont, getDesktop, eListboxPythonMultiContent, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_HALIGN_CENTER, \
@@ -9,11 +14,11 @@ import re
 
 STATUS = "/etc/openvpn/openvpn.stat"
 
-sizes = [(1 << 50L, 'PB'),
-         (1 << 40L, 'TB'),
-         (1 << 30L, 'GB'),
-         (1 << 20L, 'MB'),
-         (1 << 10L, 'KB'),
+sizes = [(1 << 50, 'PB'),
+         (1 << 40, 'TB'),
+         (1 << 30, 'GB'),
+         (1 << 20, 'MB'),
+         (1 << 10, 'KB'),
          (1, 'B')
          ]
 
@@ -67,7 +72,7 @@ class infoHelper():
                         item_info = byte2str(int(cols[1].replace("\n", "")))
                         info.append((item, item_info, False))
 
-        self.infoLabel.setList(map(set_info_label, info))
+        self.infoLabel.setList(list(map(set_info_label, info)))
         self['myInfoLabel'].selectionEnabled(0)
         if not self.StatusSpinner:
             self.updateTimer.start(12000, True)

@@ -19,5 +19,8 @@
 		<key id="KEY_DOWN" mapto="down" flags="mr" />
 		<key id="KEY_LEFT" mapto="left" flags="mr" />
 		<key id="KEY_RIGHT" mapto="right" flags="mr" />
+		<key id="KEY_HELP" mapto="info" flags="m" />
+		<key id="KEY_INFO" mapto="info" flags="m" />
+		<key id="KEY_EPG" mapto="info" flags="m" />
 	</map>
 </keymap>

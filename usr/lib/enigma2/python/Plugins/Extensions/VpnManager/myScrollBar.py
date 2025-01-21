@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import map
+
 from Components.MenuList import MenuList
 from Components.MultiContent import MultiContentEntryText
 from enigma import gFont, getDesktop, eListboxPythonMultiContent
@@ -67,7 +72,7 @@ class my_scroll_bar():
                 s = s + self.height_slider
             if not self.height == s or new_scall:
                 self.height = s
-                self.Scrollbar.setList(map(self.set_scrollbar, [1]))
+                self.Scrollbar.setList(list(map(self.set_scrollbar, [1])))
                 self['myScrollBar'].selectionEnabled(0)
                 if not self.isShow:
                     self.doShowScrollbar()
