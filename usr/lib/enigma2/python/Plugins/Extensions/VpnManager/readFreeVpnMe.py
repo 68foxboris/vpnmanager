@@ -21,7 +21,7 @@ else:
     ssl._create_default_https_context = _create_unverified_https_context
 
 URL = "https://www.freeopenvpn.me/"
-CONF_DIRECTORY = "/data/FreeVpn"
+CONF_DIRECTORY = "/etc/FreeVpn"
 
 
 class VpnMe:
